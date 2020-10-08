@@ -24,18 +24,15 @@ def get_soup(url):
 
 
 def crawl(next_url):
-    recipe_links = []
-    while next_url:
-        cur_recipe_links = get_recipe_links(next_url)
-        recipe_links += cur_recipe_links
+    if next_url:
+        recipe_links = get_recipe_links(next_url)
+        write_recipe_links(recipe_links)
         next_url = get_next_page_url(next_url)
-        crawl(next_url)
-
-    write_recipe_links(recipe_links)
+        return crawl(next_url)
 
 
 def get_next_page_url(current_page_url):
-    soup = get_soup_local(current_page_url)
+    soup = get_soup(current_page_url)
     next_page_row = soup.select_one(
         'div.ui-pagination-outer-wrap > a.ui-pagination-btn__next')
     if not next_page_row:
@@ -45,26 +42,26 @@ def get_next_page_url(current_page_url):
 
 
 def get_recipe_links(url):
-    soup = get_soup_local(url)
+    soup = get_soup(url)
 
-    articles_section = soup.select_one(
-        'section.c-category-flex__header-right')
+    recipes_section = soup.select_one('#recipes')
 
-    recipe_link_rows = articles_section.select('article > a.c-card__image-container')
+    recipe_link_rows = recipes_section.select(
+        'a.module__image-container.module__link')
     recipe_links = []
 
     for link_row in recipe_link_rows:
         link = link_row.get('href')
         if not link:
             continue
-        if 'seriouseats.com/recipes' in link:
-            recipe_links.append(link)
+        #if 'seriouseats.com/recipes' in link:
+        recipe_links.append(link)
 
     return recipe_links
 
 
 def write_recipe_links(recipe_links):
-    f = open('recipe_links.txt', 'w')
+    f = open('recipe_links.txt', 'a')
     for link in recipe_links:
         f.write(link + '\n')
 
@@ -86,10 +83,8 @@ def scrape(url):
 
 
 def main():
-    #url = "https://www.seriouseats.com/recipes/topics/cuisine/american"
-    url = 'https _www.seriouseats.com_recipes_topics_cuisine_american.html'
+    url = "https://www.seriouseats.com/recipes/topics?page=1#recipes"
     crawl(url)
-
 
 if __name__ == "__main__":
     main()
