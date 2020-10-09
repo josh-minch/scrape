@@ -1,16 +1,7 @@
+from os import path
 import requests
 import re
 from bs4 import BeautifulSoup
-
-
-def open_html(path):
-    with open(path, 'rb') as f:
-        return f.read()
-
-
-def save_html(html, path):
-    with open(path, 'wb') as f:
-        f.write(html)
 
 
 def get_soup_local(url):
@@ -25,8 +16,8 @@ def get_soup(url):
 
 def crawl(next_url):
     if next_url:
-        recipe_links = get_recipe_links(next_url)
-        write_recipe_links(recipe_links)
+        recipe_urls = request_recipe_urls(next_url)
+        write_recipe_urls(recipe_urls)
         next_url = get_next_page_url(next_url)
         return crawl(next_url)
 
@@ -41,30 +32,62 @@ def get_next_page_url(current_page_url):
         return next_page_row.get('href')
 
 
-def get_recipe_links(url):
+def request_recipe_urls(url):
     soup = get_soup(url)
 
     recipes_section = soup.select_one('#recipes')
 
     recipe_link_rows = recipes_section.select(
         'a.module__image-container.module__link')
-    recipe_links = []
+    recipe_urls = []
 
     for link_row in recipe_link_rows:
         link = link_row.get('href')
         if not link:
             continue
         #if 'seriouseats.com/recipes' in link:
-        recipe_links.append(link)
+        recipe_urls.append(link)
 
-    return recipe_links
+    return recipe_urls
 
 
-def write_recipe_links(recipe_links):
-    f = open('recipe_links.txt', 'a')
-    for link in recipe_links:
-        f.write(link + '\n')
+def write_recipe_urls(recipe_urls):
+    f = open('recipe_urls.txt', 'a')
+    for url in recipe_urls:
+        f.write(url + '\n')
 
+
+def open_html(path):
+    with open(path, 'rb') as f:
+        return f.read()
+
+
+def save_html(html, pathname):
+    with open(pathname, 'wb') as f:
+        f.write(html)
+
+
+def extract_recipe_urls(filename):
+    with open(filename) as f:
+        urls = f.read().splitlines()
+        return urls
+
+
+def request_recipes_html(urls):
+    path_base = 'html/serious'
+    path_index = 0
+    for url in urls:
+        full_path = '{}{}.html'.format(path_base, str(path_index))
+
+        if not path.exists(full_path):
+            html = requests.get(url).content
+            save_html(html, full_path)
+
+        path_index += 1
+
+def save_recipe_html_from_urls(filename):
+    urls = extract_recipe_urls(filename)
+    request_recipes_html(urls)
 
 def scrape(url):
     soup = get_soup(url)
@@ -83,8 +106,8 @@ def scrape(url):
 
 
 def main():
-    url = "https://www.seriouseats.com/recipes/topics?page=1#recipes"
-    crawl(url)
+    save_recipe_html_from_urls('recipe_urls.txt')
+
 
 if __name__ == "__main__":
     main()
