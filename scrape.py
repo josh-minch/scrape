@@ -1,12 +1,15 @@
-from os import path
-import requests
+import json
+import os
 import re
+
+import spacy
+import requests
 from bs4 import BeautifulSoup
 
 
-def get_soup_local(url):
-    with open('site/' + url) as r:
-        return BeautifulSoup(r.read(), 'html.parser')
+def get_soup_local(path):
+    with open(path, encoding="utf8") as f:
+        return BeautifulSoup(f.read(), 'html.parser')
 
 
 def get_soup(url):
@@ -45,7 +48,6 @@ def request_recipe_urls(url):
         link = link_row.get('href')
         if not link:
             continue
-        #if 'seriouseats.com/recipes' in link:
         recipe_urls.append(link)
 
     return recipe_urls
@@ -79,34 +81,73 @@ def request_recipes_html(urls):
     for url in urls:
         full_path = '{}{}.html'.format(path_base, str(path_index))
 
-        if not path.exists(full_path):
+        if not os.path.exists(full_path):
             html = requests.get(url).content
             save_html(html, full_path)
 
         path_index += 1
 
+
 def save_recipe_html_from_urls(filename):
     urls = extract_recipe_urls(filename)
     request_recipes_html(urls)
 
-def scrape(url):
-    soup = get_soup(url)
 
-    recipe_row = soup.select_one('.recipe-title')
-    recipe = recipe_row.text
+def extract_ingred_data(html_dir):
+    ingred_data = {}
 
-    ingredient_rows = soup.select('.ingredient')
-    ingredients = [ingredient_row.text for ingredient_row in ingredient_rows]
+    for html_path in os.scandir(html_dir):
+        soup = get_soup_local(html_path)
 
-    prog = re.compile(
-        '[-]?[0-9]+[,.]?[0-9]*([\/][0-9]+[,.]?[0-9]*)* (?:cups?|(table|tea)spoons?)?')
+        recipe_row = soup.select_one('.recipe-title')
+        recipe = recipe_row.text
+
+        ingredient_rows = soup.select('.ingredient')
+        ingredients = [
+            ingredient_row.text for ingredient_row in ingredient_rows]
+
+        ingred_stripped = strip_quantity(ingredients)
+        ingred = filter(ingred_stripped)
+
+        ingred_data[recipe] = ingred
+
+    with open('ingred_data.json', 'w') as outfile:
+        json.dump(ingred_data, outfile)
+
+
+def filter(ingreds):
+    nlp = spacy.load('en_core_web_sm')
+    ingreds_filtered = []
+
+    for ingred in ingreds:
+        doc = nlp(ingred)
+
+        nouns = [chunk.text for chunk in doc.noun_chunks]
+
+        ingreds_filtered += nouns
+
+    return ingreds_filtered
+
+
+def strip_quantity(ingredients):
+    reg_parentheses = r'(\(.*?\))'
+    reg_quantity = r'([-]?[0-9]+[,.]?[0-9]*([\/][0-9]+[,.]?[0-9]*)*)'
+    units = ['oz', 'ounce', 'lb', 'pound', 'g', 'grams', 'kg', 'kilogram', 'teaspoon', 'tablespoon', 'cup']
+    units = ['{}s?'.format(unit) for unit in units]
+    reg_units = '(?:' + '|'.join(units) + r')\b'
+
+    prog = re.compile(reg_parentheses +'|'+ reg_quantity +'|'+ reg_units)
+
+
     ingred_stripped = []
     for ingred in ingredients:
         ingred_stripped.append(prog.sub('', ingred).strip())
 
+    return ingred_stripped
+
 
 def main():
-    save_recipe_html_from_urls('recipe_urls.txt')
+    extract_ingred_data('html_few/')
 
 
 if __name__ == "__main__":
