@@ -1,0 +1,41 @@
+# Filter through these first to capture specific foods before more general ones, ie
+# sweet potato instead of potato
+
+cloves of garlic
+garlic cloves
+cloves garlic
+
+sweet potato
+
+star anise
+peppermint
+spearmint
+
+mangosteen
+pineapple
+
+dried cranberries
+
+brown rice
+white rice
+
+extra virgin olive oil
+extra-virgin olive oil
+light olive oil
+mild olive oil
+
+balsamic vinegar
+white wine vinegar
+red wine vinegar
+white vinegar
+sherry vinegar
+
+maple syrup
+corn syrup
+simple syrup
+
+brown sugar
+
+whole milk
+skim milk
+low-fat milk
