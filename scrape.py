@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import csv
 
 import spacy
 import requests
@@ -93,29 +94,86 @@ def save_recipe_html_from_urls(filename):
     request_recipes_html(urls)
 
 
-def extract_ingred_data(html_dir):
-    ingred_data = {}
-
+def extract_recipe_data(html_dir):
+    data = []
     for html_path in os.scandir(html_dir):
         soup = get_soup_local(html_path)
 
-        recipe_row = soup.select_one('.recipe-title')
-        recipe = recipe_row.text
+        url = get_recipe_url(soup)
+        title = get_recipe_title(soup)
+        ingreds = get_unfiltered_ingreds(soup)
 
-        ingredient_rows = soup.select('.ingredient')
-        ingredients = [
-            ingredient_row.text for ingredient_row in ingredient_rows]
+        recipe_data = {'url': url, 'title': title, 'ingreds': ingreds}
+        with open('recipe_data.json', 'a', encoding='utf8') as outfile:
+            json.dump(recipe_data, outfile)
 
-        ingred_stripped = strip_quantity(ingredients)
-        ingred = filter(ingred_stripped)
+# TODO: make fn that looks through raw ingred list and returns strings that
+# are not successfully captured by filter. then return these to a txt file so
+# they can be easily added to existing txt filters
 
-        ingred_data[recipe] = ingred
+def get_recipe_url(soup):
+    url_row = soup.find('meta', property='og:url', content=True)
+    return url_row.get('content')
 
-    with open('ingred_data.json', 'w') as outfile:
-        json.dump(ingred_data, outfile)
+
+def get_recipe_title(soup):
+    recipe_row = soup.select_one('.recipe-title')
+    return recipe_row.text
 
 
-def filter(ingreds):
+def get_unfiltered_ingreds(soup):
+    ingredient_rows = soup.select('.ingredient')
+    return [ingredient_row.text for ingredient_row in ingredient_rows]
+
+
+def filter_naive(ingreds, ingred_filters):
+    """Return set of ingredients matching approved ingredients."""
+    filtered_ingreds = []
+    for ingred in ingreds:
+
+        '''First check if ingred is found in list of special foods. These foods contain
+        substrings found in more general food strings. For example, if ingred is
+        'sour cream', we must check for 'sour cream' before 'cream', otherwise the filter
+        will incorrectly add 'cream' to filtered_ingreds.'''
+
+        found_spec_ingred = check_ingred(ingred, ingred_filters['special'])
+        found_gen_ingred = check_ingred(ingred, ingred_filters['general'])
+
+        if found_spec_ingred:
+            filtered_ingreds.append(found_spec_ingred)
+        elif found_gen_ingred:
+            filtered_ingreds.append(found_gen_ingred)
+        else:
+            pass
+
+    return filtered_ingreds
+
+def check_ingred(ingred_to_check, filter):
+    found_ingred = None
+    for approved_ingred in filter:
+        if approved_ingred in ingred_to_check:
+            found_ingred = approved_ingred
+    return found_ingred
+
+def create_ingred_filters():
+    """Return dictionary of approved ingredient filters, stored as lists."""
+    filter_files = ['general', 'special']
+
+    ingred_filters = {}
+    for filter_name in filter_files:
+        with open(filter_name, encoding="utf8") as f:
+            ingred_filter = f.read().splitlines()
+
+            # Remove duplicates, empty lines
+            ingred_filter = set(ingred_filter)
+            ingred_filter.remove('')
+
+            ingred_filters[filter_name] = ingred_filter
+
+    return ingred_filters
+
+
+def filter_nlp(ingreds):
     nlp = spacy.load('en_core_web_sm')
     ingreds_filtered = []
 
@@ -129,15 +187,17 @@ def filter(ingreds):
     return ingreds_filtered
 
 
-def strip_quantity(ingredients):
+def filter_regex(ingredients):
+    # Regex for parenthetical statements like (100g)
     reg_parentheses = r'(\(.*?\))'
+    # For numerals, decimals, fractions
     reg_quantity = r'([-]?[0-9]+[,.]?[0-9]*([\/][0-9]+[,.]?[0-9]*)*)'
+
     units = ['oz', 'ounce', 'lb', 'pound', 'g', 'grams', 'kg', 'kilogram', 'teaspoon', 'tablespoon', 'cup']
     units = ['{}s?'.format(unit) for unit in units]
-    reg_units = '(?:' + '|'.join(units) + r')\b'
+    reg_units = r'\b(?:' + '|'.join(units) + r')\b'
 
     prog = re.compile(reg_parentheses +'|'+ reg_quantity +'|'+ reg_units)
-
 
     ingred_stripped = []
     for ingred in ingredients:
@@ -146,8 +206,32 @@ def strip_quantity(ingredients):
     return ingred_stripped
 
 
+def filter_ingred_data(datafile):
+    data = json.load(datafile)
+    ingred_filters = create_ingred_filters()
+
+    for recipe in data:
+        filtered_ingreds = filter_naive(recipe.ingreds, ingred_filters)
+        recipe.ingreds = filtered_ingreds
+
+def create_ingred_map(recipe_data):
+    all_ingreds = []
+    for recipe in recipe_data:
+        all_ingreds += recipe.ingreds
+
+    index = 0
+    mapping = {}
+    for ingred in all_ingreds:
+        mapping[ingred] = index
+
+    all_ingreds = list(set(all_ingreds))
+    ingred_filters = create_ingred_filters()
+    filtered_ingreds = filter_naive(all_ingreds, ingred_filters)
+
+    return mapping
+
 def main():
-    extract_ingred_data('html_few/')
+    extract_recipe_data('html/')
 
 
 if __name__ == "__main__":
