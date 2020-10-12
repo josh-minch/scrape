@@ -3,6 +3,7 @@ import os
 import re
 import csv
 
+import pandas as pd
 import spacy
 import requests
 from bs4 import BeautifulSoup
@@ -95,7 +96,10 @@ def save_recipe_html_from_urls(filename):
 
 
 def extract_recipe_data(html_dir):
-    data = []
+    with open('recipe_data.csv', 'w', encoding='utf8', newline='') as outfile:
+        recipe_writer = csv.writer(outfile)
+        recipe_writer.writerow(['title', 'url', 'ingreds'])
+
     for html_path in os.scandir(html_dir):
         soup = get_soup_local(html_path)
 
@@ -103,13 +107,10 @@ def extract_recipe_data(html_dir):
         title = get_recipe_title(soup)
         ingreds = get_unfiltered_ingreds(soup)
 
-        recipe_data = {'url': url, 'title': title, 'ingreds': ingreds}
-        with open('recipe_data.json', 'a', encoding='utf8') as outfile:
-            json.dump(recipe_data, outfile)
+        with open('recipe_data.csv', 'a', encoding='utf8', newline='') as outfile:
+            recipe_writer = csv.writer(outfile)
+            recipe_writer.writerow([title, url, ingreds])
 
-# TODO: make fn that looks through raw ingred list and returns strings that
-# are not successfully captured by filter. then return these to a txt file so
-# they can be easily added to existing txt filters
 
 def get_recipe_url(soup):
     url_row = soup.find('meta', property='og:url', content=True)
@@ -127,7 +128,7 @@ def get_unfiltered_ingreds(soup):
 
 
 def filter_naive(ingreds, ingred_filters):
-    """Return set of ingredients matching approved ingredients."""
+    """Return list of ingredients matching approved ingredients."""
     filtered_ingreds = []
     for ingred in ingreds:
 
@@ -148,12 +149,15 @@ def filter_naive(ingreds, ingred_filters):
 
     return filtered_ingreds
 
+# TODO: Change to regex to account for word boundaries. As it stnads, approved_ingred
+# strings match superstrings, like 'rum' in 'drumstick'
 def check_ingred(ingred_to_check, filter):
     found_ingred = None
     for approved_ingred in filter:
         if approved_ingred in ingred_to_check:
             found_ingred = approved_ingred
     return found_ingred
+
 
 def create_ingred_filters():
     """Return dictionary of approved ingredient filters, stored as lists."""
@@ -230,8 +234,42 @@ def create_ingred_map(recipe_data):
 
     return mapping
 
+
+def get_all_ingreds(recipe_file):
+    ingreds = []
+    with open(recipe_file, 'r', encoding='utf8', newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            ingred_row = row['ingreds']
+            ingred_row = ingred_row.replace("'",'"')
+            ingred_row = json.loads(ingred_row)
+            ingreds.append(ingred_row)
+
+    ingreds = [ingred for sublist in ingreds for ingred in sublist]
+    return ingreds
+
+
+def find_unrecognized_ingreds(ingreds):
+    """Write ingredients not found by ingred_filters to csv"""
+    open('unrecognized_ingreds.csv', 'w').close()
+
+    ingred_filters = create_ingred_filters()
+
+    for ingred in ingreds:
+        found_spec_ingred = check_ingred(ingred, ingred_filters['special'])
+        found_gen_ingred = check_ingred(ingred, ingred_filters['general'])
+
+        if not (found_spec_ingred or found_gen_ingred):
+            with open('unrecognized_ingreds.csv', 'a', encoding='utf8', newline='') as outfile:
+                recipe_writer = csv.writer(outfile)
+                recipe_writer.writerow([ingred])
+
 def main():
-    extract_recipe_data('html/')
+    recipe_file = 'recipe_data.csv'
+    ingreds = get_all_ingreds(recipe_file)
+    find_unrecognized_ingreds(ingreds)
+
+
 
 
 if __name__ == "__main__":
