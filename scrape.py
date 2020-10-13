@@ -6,12 +6,12 @@ import csv
 import pandas as pd
 import spacy
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, SoupStrainer
 
 
-def get_soup_local(path):
+def get_soup_local(path, strainer):
     with open(path, encoding="utf8") as f:
-        return BeautifulSoup(f.read(), 'html.parser')
+        return BeautifulSoup(f.read(), 'html.parser', parse_only=strainer)
 
 
 def get_soup(url):
@@ -96,33 +96,36 @@ def save_recipe_html_from_urls(filename):
 
 
 def extract_recipe_data(html_dir):
-    with open('recipe_data.csv', 'w', encoding='utf8', newline='') as outfile:
-        recipe_writer = csv.writer(outfile)
-        recipe_writer.writerow(['title', 'url', 'ingreds'])
-
+    data = []
     for html_path in os.scandir(html_dir):
-        soup = get_soup_local(html_path)
+        url = get_recipe_url(html_path)
+        title = get_recipe_title(html_path)
+        ingreds = get_unfiltered_ingreds(html_path)
 
-        url = get_recipe_url(soup)
-        title = get_recipe_title(soup)
-        ingreds = get_unfiltered_ingreds(soup)
+        recipe = {'title': title, 'url': url, 'ingreds': ingreds}
+        data.append(recipe)
 
-        with open('recipe_data.csv', 'a', encoding='utf8', newline='') as outfile:
-            recipe_writer = csv.writer(outfile)
-            recipe_writer.writerow([title, url, ingreds])
+    with open('recipe_data.json', 'w', encoding='utf8') as f:
+        json.dump(data, f)
 
 
-def get_recipe_url(soup):
+def get_recipe_url(html_path):
+    strainer = SoupStrainer('meta', property='og:url')
+    soup = get_soup_local(html_path, strainer)
     url_row = soup.find('meta', property='og:url', content=True)
     return url_row.get('content')
 
 
-def get_recipe_title(soup):
-    recipe_row = soup.select_one('.recipe-title')
-    return recipe_row.text
+def get_recipe_title(html_path):
+    strainer = SoupStrainer('meta', property='og:title')
+    soup = get_soup_local(html_path, strainer)
+    recipe_row = soup.find('meta', property='og:title', content=True)
+    return recipe_row.get('content')
 
 
-def get_unfiltered_ingreds(soup):
+def get_unfiltered_ingreds(html_path):
+    strainer = SoupStrainer('li', class_='ingredient')
+    soup = get_soup_local(html_path, strainer)
     ingredient_rows = soup.select('.ingredient')
     return [ingredient_row.text for ingredient_row in ingredient_rows]
 
@@ -154,7 +157,8 @@ def filter_naive(ingreds, ingred_filters):
 def check_ingred(ingred_to_check, filter):
     found_ingred = None
     for approved_ingred in filter:
-        if approved_ingred in ingred_to_check:
+        pattern = r'\b' + re.escape(approved_ingred) + r's?\b'
+        if re.search(pattern, ingred_to_check.lower()):
             found_ingred = approved_ingred
     return found_ingred
 
@@ -218,36 +222,21 @@ def filter_ingred_data(datafile):
         filtered_ingreds = filter_naive(recipe.ingreds, ingred_filters)
         recipe.ingreds = filtered_ingreds
 
-def create_ingred_map(recipe_data):
-    all_ingreds = []
-    for recipe in recipe_data:
-        all_ingreds += recipe.ingreds
 
-    index = 0
-    mapping = {}
-    for ingred in all_ingreds:
-        mapping[ingred] = index
+def save_all_ingreds(recipe_file):
+    with open(recipe_file, encoding='utf8') as f:
+        data = json.load(f)
 
-    all_ingreds = list(set(all_ingreds))
-    ingred_filters = create_ingred_filters()
-    filtered_ingreds = filter_naive(all_ingreds, ingred_filters)
-
-    return mapping
-
-
-def get_all_ingreds(recipe_file):
     ingreds = []
-    with open(recipe_file, 'r', encoding='utf8', newline='') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            ingred_row = row['ingreds']
-            ingred_row = ingred_row.replace("'",'"')
-            ingred_row = json.loads(ingred_row)
-            ingreds.append(ingred_row)
+    for recipe in data:
+        ingreds.append(recipe['ingreds'])
 
     ingreds = [ingred for sublist in ingreds for ingred in sublist]
-    return ingreds
 
+    with open('all_ingreds.json', 'w', encoding='utf8') as f:
+        json.dump(ingreds, f)
+
+    return ingreds
 
 def find_unrecognized_ingreds(ingreds):
     """Write ingredients not found by ingred_filters to csv"""
@@ -265,12 +254,17 @@ def find_unrecognized_ingreds(ingreds):
                 recipe_writer.writerow([ingred])
 
 def main():
-    recipe_file = 'recipe_data.csv'
-    ingreds = get_all_ingreds(recipe_file)
-    find_unrecognized_ingreds(ingreds)
+    with open('ingreds_stripped.json', encoding='utf8') as f:
+        ingreds_stripped = json.load(f)
+    find_unrecognized_ingreds(ingreds_stripped)
+    """
+    kosher = 'Kosher salt'
+    salt = 'salt'
 
-
-
+    pattern = r'\b' + re.escape(ingred.lower()) + r'\b'
+    if re.search(pattern, jal):
+        print('yes')
+    """
 
 if __name__ == "__main__":
     main()
