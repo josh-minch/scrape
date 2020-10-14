@@ -2,6 +2,7 @@ import json
 import os
 import re
 import csv
+import time
 
 import pandas as pd
 import spacy
@@ -132,7 +133,7 @@ def get_unfiltered_ingreds(html_path):
 
 def filter_naive(ingreds, ingred_filters):
     """Return list of ingredients matching approved ingredients."""
-    filtered_ingreds = []
+    filtered_ingreds = set()
     for ingred in ingreds:
 
         '''First check if ingred is found in list of special foods. These foods contain
@@ -141,26 +142,24 @@ def filter_naive(ingreds, ingred_filters):
         will incorrectly add 'cream' to filtered_ingreds.'''
 
         found_spec_ingred = check_ingred(ingred, ingred_filters['special'])
-        found_gen_ingred = check_ingred(ingred, ingred_filters['general'])
-
         if found_spec_ingred:
-            filtered_ingreds.append(found_spec_ingred)
-        elif found_gen_ingred:
-            filtered_ingreds.append(found_gen_ingred)
+            filtered_ingreds.add(found_spec_ingred)
         else:
-            pass
+            found_gen_ingred = check_ingred(ingred, ingred_filters['general'])
+            if found_gen_ingred:
+                filtered_ingreds.add(found_gen_ingred)
 
-    return filtered_ingreds
+    return list(filtered_ingreds)
 
-# TODO: Change to regex to account for word boundaries. As it stnads, approved_ingred
-# strings match superstrings, like 'rum' in 'drumstick'
+# TODO: Change filter to precompiled regex expression
+# Something like ?:apples?|beets?|...
 def check_ingred(ingred_to_check, filter):
-    found_ingred = None
+    """Return ingredient from filter if one matches ingred_to_check."""
     for approved_ingred in filter:
         pattern = r'\b' + re.escape(approved_ingred) + r's?\b'
         if re.search(pattern, ingred_to_check.lower()):
-            found_ingred = approved_ingred
-    return found_ingred
+            return approved_ingred
+    return None
 
 
 def create_ingred_filters():
@@ -171,10 +170,10 @@ def create_ingred_filters():
     for filter_name in filter_files:
         with open(filter_name, encoding="utf8") as f:
             ingred_filter = f.read().splitlines()
-
             # Remove duplicates, empty lines
             ingred_filter = set(ingred_filter)
             ingred_filter.remove('')
+            ingred_filter = list(ingred_filter)
 
             ingred_filters[filter_name] = ingred_filter
 
@@ -219,9 +218,11 @@ def filter_ingred_data(datafile):
     ingred_filters = create_ingred_filters()
 
     for recipe in data:
-        filtered_ingreds = filter_naive(recipe.ingreds, ingred_filters)
-        recipe.ingreds = filtered_ingreds
+        filtered_ingreds = filter_naive(recipe['ingreds'], ingred_filters)
+        recipe['ingreds'] = filtered_ingreds
 
+    with open('recipe_data_filtered.json', 'w', encoding='utf8') as f:
+        json.dump(data, f)
 
 def save_all_ingreds(recipe_file):
     with open(recipe_file, encoding='utf8') as f:
@@ -254,17 +255,20 @@ def find_unrecognized_ingreds(ingreds):
                 recipe_writer.writerow([ingred])
 
 def main():
-    with open('ingreds_stripped.json', encoding='utf8') as f:
+    """ with open('ingreds_stripped.json', encoding='utf8') as f:
         ingreds_stripped = json.load(f)
     find_unrecognized_ingreds(ingreds_stripped)
-    """
-    kosher = 'Kosher salt'
-    salt = 'salt'
 
-    pattern = r'\b' + re.escape(ingred.lower()) + r'\b'
-    if re.search(pattern, jal):
-        print('yes')
+    with open('recipe_data.json', encoding='utf8') as f:
+        filter_ingred_data(f)
     """
+    ingred_filters = create_ingred_filters()
+    with open('all_ingreds_stripped.json', encoding='utf8') as f:
+        ingreds = json.load(f)
+        filtered_ingreds = filter_naive(ingreds, ingred_filters)
+
+    with open('all_ingreds_filtered.json', 'w', encoding='utf8') as f:
+        json.dump(filtered_ingreds, f)
 
 if __name__ == "__main__":
     main()
