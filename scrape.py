@@ -10,6 +10,8 @@ import requests
 from bs4 import BeautifulSoup, SoupStrainer
 
 
+
+
 def get_soup_local(path, strainer):
     with open(path, encoding="utf8") as f:
         return BeautifulSoup(f.read(), 'html.parser', parse_only=strainer)
@@ -95,7 +97,7 @@ def save_recipe_html_from_urls(filename):
     urls = extract_recipe_urls(filename)
     request_recipes_html(urls)
 
-
+# TODO: Fix extract_recipe_data duplicate recipe entries
 def extract_recipe_data(html_dir):
     data = []
     for html_path in os.scandir(html_dir):
@@ -255,9 +257,11 @@ def find_unrecognized_ingreds(ingreds):
                 recipe_writer.writerow([ingred])
 
 def main():
-    """ with open('ingreds_stripped.json', encoding='utf8') as f:
+    """
+    with open('ingreds_stripped.json', encoding='utf8') as f:
         ingreds_stripped = json.load(f)
     find_unrecognized_ingreds(ingreds_stripped)
+    """
 
     with open('recipe_data.json', encoding='utf8') as f:
         filter_ingred_data(f)
@@ -265,10 +269,12 @@ def main():
     ingred_filters = create_ingred_filters()
     with open('all_ingreds_stripped.json', encoding='utf8') as f:
         ingreds = json.load(f)
+        ingreds = list(set(ingreds))
         filtered_ingreds = filter_naive(ingreds, ingred_filters)
+        filtered_ingreds.sort()
 
     with open('all_ingreds_filtered.json', 'w', encoding='utf8') as f:
         json.dump(filtered_ingreds, f)
-
+    """
 if __name__ == "__main__":
     main()
